@@ -32,6 +32,7 @@ backend/.pytest_cache/
 *.py[cod]
 
 # --- Local data, logs, and generated files ---
+docs/PROJECT_GUIDE.md
 *.sqlite
 *.sqlite3
 *.db
