@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>Wazifny</title>
+  <rect width="64" height="64" rx="14" fill="#ffffff"/>
+  <path d="M9 19.5c2.9-2.2 7.1-1.5 9.1 1.6L25.5 33l6.8-15.4c1.4-3.2 5.9-3.7 8-1l6.2 8 3.7-6.5c1.8-3.1 6.5-3.2 8.3-.2 1.1 1.8.9 4.1-.4 5.7L48.2 36c-2 2.6-5.8 2.5-7.6-.2l-5.4-8.1-6.1 14c-1.4 3.2-5.8 3.7-7.9 1L9 25.2c-1.7-2.1-1.4-4.2 0-5.7Z" fill="#f97316"/>
+  <circle cx="51" cy="11" r="4" fill="#16a34a"/>
+</svg>

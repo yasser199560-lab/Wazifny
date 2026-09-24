@@ -1,0 +1,47 @@
+# --- Secrets and local configuration ---
+# Commit only template files such as .env.example; never commit real values.
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+id_rsa
+id_ed25519
+credentials/
+secrets/
+service-account*.json
+firebase-adminsdk*.json
+
+# --- Frontend build artifacts ---
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/coverage/
+
+# --- Python / backend artifacts ---
+backend/.venv/
+backend/venv/
+backend/env/
+backend/**/__pycache__/
+backend/*.egg-info/
+backend/.pytest_cache/
+*.py[cod]
+
+# --- Local data, logs, and generated files ---
+*.sqlite
+*.sqlite3
+*.db
+*.log
+coverage/
+dist/
+build/
+
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
