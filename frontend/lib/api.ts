@@ -589,6 +589,13 @@ export function getMyJobs(token: string) {
   });
 }
 
+export function getMyJob(token: string, jobId: string) {
+  return request<Job>(`/jobs/mine/${jobId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+}
+
 export function getJob(jobId: string, token?: string | null) {
   return request<Job>(`/jobs/${jobId}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -602,6 +609,7 @@ export interface CompanyProfile {
   user_id: string;
   company_name: string;
   logo_url: string | null;
+  banner_url: string | null;
   website: string | null;
   sector: string | null;
   workforce_size: string | null;
@@ -624,6 +632,36 @@ export function updateCompanyProfile(token: string, payload: Partial<CompanyProf
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify(payload),
   });
+}
+
+export function companyImageUrl(path: string | null) {
+  if (!path) return null;
+  return new URL(path, API_BASE_URL).toString();
+}
+
+export async function uploadCompanyImage(
+  token: string,
+  kind: "logo" | "banner",
+  file: File
+) {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(`${API_BASE_URL}/employers/me/media/${kind}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  if (!response.ok) {
+    let message = response.statusText;
+    try {
+      const body = await response.json();
+      message = body.detail ?? message;
+    } catch {
+      // Keep the HTTP status text when the response is not JSON.
+    }
+    throw new ApiError(typeof message === "string" ? message : "Image upload failed", response.status);
+  }
+  return response.json() as Promise<{ url: string }>;
 }
 
 // ---- Employer: dashboard ----

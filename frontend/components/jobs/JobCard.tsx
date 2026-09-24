@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Briefcase, CalendarDays, MapPin, Sparkles } from "lucide-react";
-import type { Job } from "@/lib/api";
+import { companyImageUrl, type Job } from "@/lib/api";
 import { useLanguage } from "@/components/i18n/LanguageProvider";
 
 const JOB_TYPE_LABEL: Record<string, string> = {
@@ -39,7 +39,7 @@ export default function JobCard({ job }: JobCardProps) {
       className="group flex w-full flex-col overflow-hidden rounded-xl border border-slate-100 bg-white text-left shadow-card transition-all hover:-translate-y-0.5 hover:border-wazifny-green/40 hover:shadow-md sm:flex-row sm:items-stretch"
     >
       <div className="flex h-28 w-full shrink-0 items-center justify-center bg-gradient-to-br from-slate-50 to-emerald-50 sm:h-auto sm:w-40">
-        {job.company_logo_url ? <img src={job.company_logo_url} alt={`${job.company_name || "Company"} logo`} loading="lazy" className="h-20 w-20 rounded-xl bg-white object-contain p-2 shadow-sm" /> : <span className="flex h-20 w-20 items-center justify-center rounded-xl bg-wazifny-navy text-2xl font-bold text-white shadow-sm">{(job.company_name || "W").slice(0, 1).toUpperCase()}</span>}
+        {job.company_logo_url ? <img src={companyImageUrl(job.company_logo_url) ?? ""} alt={`${job.company_name || "Company"} logo`} loading="lazy" className="h-20 w-20 rounded-xl bg-white object-contain p-2 shadow-sm" /> : <span className="flex h-20 w-20 items-center justify-center rounded-xl bg-wazifny-navy text-2xl font-bold text-white shadow-sm">{(job.company_name || "W").slice(0, 1).toUpperCase()}</span>}
       </div>
       <div className="min-w-0 flex-1 px-5 py-5">
         <p className="text-xs font-medium text-slate-400">{job.company_name || t("Wazifny Partner")}</p>

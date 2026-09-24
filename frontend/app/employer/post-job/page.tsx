@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, FilePlus, Loader2 } from "lucide-react";
 import EmployerShell from "@/components/employer/EmployerShell";
-import { createJob, type JobCreate } from "@/lib/api";
+import { createJob, getMyJob, updateJob, type JobCreate } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
 
 const CATEGORY_OPTIONS = [
@@ -24,6 +25,8 @@ export default function PostJobPage() {
   const router = useRouter();
   const token = useAuthStore((s) => s.token);
   const [step, setStep] = useState(0);
+  const [editingJobId, setEditingJobId] = useState<string | null>(null);
+  const [isLoadingJob, setIsLoadingJob] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,12 +38,50 @@ export default function PostJobPage() {
     external_url: "",
   });
 
+  useEffect(() => {
+    const editId = new URLSearchParams(window.location.search).get("edit");
+    if (editId) setEditingJobId(editId);
+  }, []);
+
+  useEffect(() => {
+    if (!token || !editingJobId) return;
+    setError(null);
+    setIsLoadingJob(true);
+    getMyJob(token, editingJobId)
+      .then((job) => {
+        const salaryParts = job.salary?.match(/\$?([\d,]+)\s*-\s*\$?([\d,?]+)/);
+        setForm({
+          title: job.title,
+          category: job.category,
+          job_type: job.job_type,
+          location: job.location,
+          salary_min: salaryParts?.[1]?.replaceAll(",", "") ?? "",
+          salary_max: salaryParts?.[2]?.replaceAll(",", "") ?? "",
+          description: job.description ?? "",
+          requirements: job.requirements.join("\n"),
+          application_method: job.application_method,
+          external_url: job.external_url ?? "",
+        });
+      })
+      .catch((reason) => setError(reason instanceof Error ? reason.message : "Could not load this job."))
+      .finally(() => setIsLoadingJob(false));
+  }, [token, editingJobId]);
+
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
   const canProceedStep0 = form.title.trim() && form.category && form.location.trim();
   const canProceedStep1 = form.description.trim();
+
+  if (editingJobId && error && !isLoadingJob) {
+    return (
+      <EmployerShell>
+        <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+        <Link href="/employer/manage-jobs" className="mt-4 inline-block text-sm font-medium text-wazifny-green hover:underline">Back to Manage Jobs</Link>
+      </EmployerShell>
+    );
+  }
 
   async function handlePublish() {
     if (!token) return;
@@ -62,10 +103,12 @@ export default function PostJobPage() {
         description: form.description.trim(),
         requirements: form.requirements.split("\n").map((r) => r.trim()).filter(Boolean),
       };
-      const job = await createJob(token, payload);
-      router.push(`/jobs/${job.id}`);
-    } catch {
-      setError("Couldn't publish the job. Please check the fields and try again.");
+      const job = editingJobId
+        ? await updateJob(token, editingJobId, payload)
+        : await createJob(token, payload);
+      router.push(editingJobId ? `/employer/manage-jobs/${job.id}` : `/jobs/${job.id}`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Couldn't save the job. Please check the fields and try again.");
       setIsSubmitting(false);
     }
   }
@@ -74,11 +117,13 @@ export default function PostJobPage() {
     <EmployerShell>
       <div className="flex items-center gap-2">
         <FilePlus className="h-6 w-6 text-wazifny-green" />
-        <h1 className="text-2xl font-bold text-wazifny-navy">Post a Job</h1>
+        <h1 className="text-2xl font-bold text-wazifny-navy">{editingJobId ? "Edit Job" : "Post a Job"}</h1>
       </div>
       <p className="mt-1 text-sm text-slate-500">Fill in the details to attract the right candidates</p>
 
-      <div className="mt-6 flex items-center gap-3">
+      {isLoadingJob && <div className="mt-6 flex justify-center"><Loader2 className="h-6 w-6 animate-spin text-wazifny-green" /></div>}
+
+      {!isLoadingJob && <div className="mt-6 flex items-center gap-3">
         {STEPS.map((label, i) => (
           <div key={label} className="flex items-center gap-3">
             <span
@@ -92,9 +137,9 @@ export default function PostJobPage() {
             {i < STEPS.length - 1 && <span className="h-px w-10 bg-slate-200" />}
           </div>
         ))}
-      </div>
+      </div>}
 
-      <div className="mt-6 rounded-xl border border-slate-100 bg-white p-6 shadow-card">
+      {!isLoadingJob && <div className="mt-6 rounded-xl border border-slate-100 bg-white p-6 shadow-card">
         {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
         {step === 0 && (
@@ -254,12 +299,12 @@ export default function PostJobPage() {
                 className="flex items-center gap-2 rounded-lg bg-wazifny-orange px-6 py-2.5 text-sm font-semibold text-white hover:bg-wazifny-orange-dark disabled:opacity-60"
               >
                 {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                Publish Job
+                {editingJobId ? "Save Changes" : "Publish Job"}
               </button>
             </div>
           </div>
         )}
-      </div>
+      </div>}
     </EmployerShell>
   );
 }

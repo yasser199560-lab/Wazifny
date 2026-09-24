@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Building2, Globe, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Building2, Globe, ImagePlus, Loader2 } from "lucide-react";
 import EmployerShell from "@/components/employer/EmployerShell";
-import { getCompanyProfile, updateCompanyProfile, type CompanyProfile } from "@/lib/api";
+import { companyImageUrl, getCompanyProfile, updateCompanyProfile, uploadCompanyImage, type CompanyProfile } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
 
 export default function CompanyProfilePage() {
@@ -12,10 +12,14 @@ export default function CompanyProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [imageBusy, setImageBusy] = useState<"logo" | "banner" | null>(null);
+  const [error, setError] = useState("");
+  const logoInput = useRef<HTMLInputElement>(null);
+  const bannerInput = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
     company_name: "", location: "", website: "", sector: "",
-    workforce_size: "", lifecycle_stage: "", description: "", logo_url: "",
+    workforce_size: "", lifecycle_stage: "", description: "",
   });
 
   useEffect(() => {
@@ -25,7 +29,6 @@ export default function CompanyProfilePage() {
         setProfile(p);
         setForm({
           company_name: p.company_name || "",
-          logo_url: p.logo_url || "",
           location: p.location || "",
           website: p.website || "",
           sector: p.sector || "",
@@ -39,14 +42,31 @@ export default function CompanyProfilePage() {
 
   async function handleSave() {
     if (!token) return;
+    setError("");
     setSaving(true);
     try {
       const updated = await updateCompanyProfile(token, form);
       setProfile(updated);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not save company details.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleImageUpload(kind: "logo" | "banner", file?: File) {
+    if (!token || !file) return;
+    setError("");
+    setImageBusy(kind);
+    try {
+      await uploadCompanyImage(token, kind, file);
+      setProfile(await getCompanyProfile(token));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Image upload failed.");
+    } finally {
+      setImageBusy(null);
     }
   }
 
@@ -76,12 +96,18 @@ export default function CompanyProfilePage() {
         </button>
       </div>
 
+      {error && <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+
       <div className="mt-6 overflow-hidden rounded-xl border border-slate-100 bg-white shadow-card">
-        <div className="flex h-28 items-center justify-center bg-gradient-to-br from-wazifny-green to-wazifny-navy text-white/70">
-          Company Banner
+        <div className="relative flex h-36 items-center justify-center overflow-hidden bg-gradient-to-br from-wazifny-green to-wazifny-navy text-white/70">
+          {profile.banner_url && <img src={companyImageUrl(profile.banner_url) ?? ""} alt="Company banner" className="absolute inset-0 h-full w-full object-cover" />}
+          <button type="button" onClick={() => bannerInput.current?.click()} disabled={imageBusy !== null} className="absolute bottom-3 right-3 inline-flex items-center gap-2 rounded-lg bg-white/95 px-3 py-2 text-xs font-semibold text-wazifny-navy shadow disabled:opacity-60">
+            {imageBusy === "banner" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />} Upload banner
+          </button>
+          <input ref={bannerInput} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { void handleImageUpload("banner", e.target.files?.[0]); e.currentTarget.value = ""; }} />
         </div>
         <div className="flex items-center gap-3 p-5">
-          <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white text-wazifny-green">{form.logo_url ? <img src={form.logo_url} alt="Company logo" className="h-full w-full object-contain p-1" /> : <Building2 className="h-6 w-6" />}</span>
+          <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white text-wazifny-green">{profile.logo_url ? <img src={companyImageUrl(profile.logo_url) ?? ""} alt="Company logo" className="h-full w-full object-contain p-1" /> : <Building2 className="h-6 w-6" />}</span>
           <div>
             <h2 className="text-lg font-bold text-wazifny-navy">{form.company_name || "Your Company"}</h2>
             <div className="mt-1 flex flex-wrap gap-2 text-xs">
@@ -90,6 +116,10 @@ export default function CompanyProfilePage() {
               {form.workforce_size && <span className="rounded-full bg-slate-100 px-2.5 py-1">{form.workforce_size} employees</span>}
             </div>
           </div>
+          <button type="button" onClick={() => logoInput.current?.click()} disabled={imageBusy !== null} className="ml-auto inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-wazifny-navy disabled:opacity-60">
+            {imageBusy === "logo" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />} Upload logo
+          </button>
+          <input ref={logoInput} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { void handleImageUpload("logo", e.target.files?.[0]); e.currentTarget.value = ""; }} />
         </div>
       </div>
 
@@ -107,9 +137,6 @@ export default function CompanyProfilePage() {
               <Globe className="h-4 w-4 text-slate-400" />
               <input value={form.website} onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))} className={inputClass} placeholder="https://yourcompany.com" />
             </div>
-          </Field>
-          <Field label="Company Logo URL">
-            <input value={form.logo_url} onChange={(e) => setForm((f) => ({ ...f, logo_url: e.target.value }))} className={inputClass} placeholder="https://yourcompany.com/logo.png" />
           </Field>
           <Field label="Sector">
             <input value={form.sector} onChange={(e) => setForm((f) => ({ ...f, sector: e.target.value }))} className={inputClass} placeholder="Technology" />

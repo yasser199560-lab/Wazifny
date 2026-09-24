@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ExternalLink, Loader2, MapPin, Search } from "lucide-react";
 import TalentShell from "@/components/talent/TalentShell";
-import { ApiError, applyToJob, saveJob, searchJobs, type Job } from "@/lib/api";
+import { ApiError, applyToJob, companyImageUrl, saveJob, searchJobs, type Job } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
 
 const CATEGORY_OPTIONS = [
@@ -116,7 +116,7 @@ export default function BrowseJobsPage() {
         <div className="mt-3 space-y-3">
           {jobs.map((job) => (
             <div key={job.id} className="overflow-hidden rounded-xl border border-slate-100 bg-white shadow-card sm:flex sm:items-stretch">
-              <div className="flex h-32 shrink-0 items-center justify-center bg-gradient-to-br from-slate-50 to-emerald-50 sm:h-auto sm:w-44">{job.company_logo_url ? <img src={job.company_logo_url} alt={`${job.company_name || "Company"} logo`} loading="lazy" className="h-20 w-20 rounded-xl bg-white object-contain p-2 shadow-sm" /> : <span className="flex h-20 w-20 items-center justify-center rounded-xl bg-wazifny-navy text-2xl font-bold text-white shadow-sm">{(job.company_name || "W").slice(0, 1).toUpperCase()}</span>}</div>
+              <div className="flex h-32 shrink-0 items-center justify-center bg-gradient-to-br from-slate-50 to-emerald-50 sm:h-auto sm:w-44">{job.company_logo_url ? <img src={companyImageUrl(job.company_logo_url) ?? ""} alt={`${job.company_name || "Company"} logo`} loading="lazy" className="h-20 w-20 rounded-xl bg-white object-contain p-2 shadow-sm" /> : <span className="flex h-20 w-20 items-center justify-center rounded-xl bg-wazifny-navy text-2xl font-bold text-white shadow-sm">{(job.company_name || "W").slice(0, 1).toUpperCase()}</span>}</div>
               <div className="flex flex-1 flex-col justify-between gap-3 p-5 sm:flex-row sm:items-center">
               <div className="min-w-0">
                 <h3 className="font-semibold text-wazifny-navy">{job.title}</h3>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Briefcase, Loader2, Plus, Users, X } from "lucide-react";
+import { Briefcase, Eye, Loader2, Pencil, Plus, Users, X } from "lucide-react";
 import EmployerShell from "@/components/employer/EmployerShell";
 import { closeJob, getMyJobs, type Job } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
@@ -83,11 +83,23 @@ export default function ManageJobsPage() {
               <div className="flex shrink-0 items-center gap-2">
                 <span
                   className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                    job.status === "active" ? "bg-wazifny-green/10 text-wazifny-green" : "bg-slate-100 text-slate-400"
+                    job.status === "active" ? "bg-wazifny-green/10 text-wazifny-green" : job.status === "pending" || job.status === "pending_review" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-500"
                   }`}
                 >
-                  {job.status === "active" ? "Active" : "Closed"}
+                  {job.status === "active" ? "Active" : job.status === "pending" || job.status === "pending_review" ? "Awaiting review" : "Closed"}
                 </span>
+                <Link
+                  href={`/employer/manage-jobs/${job.id}`}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm text-wazifny-navy hover:bg-slate-50"
+                >
+                  <Eye className="h-4 w-4" /> View
+                </Link>
+                <Link
+                  href={`/employer/post-job?edit=${job.id}`}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm text-wazifny-navy hover:bg-slate-50"
+                >
+                  <Pencil className="h-4 w-4" /> Edit
+                </Link>
                 <Link
                   href={`/employer/applicants?job=${job.id}`}
                   className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm text-wazifny-navy hover:bg-slate-50"
