@@ -109,7 +109,7 @@ export default function AiMatchesPage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="font-semibold text-wazifny-navy">{job.title}</h3>
+                    <h3 className="font-semibold text-wazifny-navy"><Link href={`/jobs/${job.id}`} className="hover:text-wazifny-green hover:underline">{job.title}</Link></h3>
                     <p className="text-sm text-slate-400">{job.company_name}</p>
                   </div>
                   {job.match_score != null && (
@@ -146,6 +146,12 @@ export default function AiMatchesPage() {
                 )}
 
                 <div className="mt-4 flex gap-2">
+                  <Link
+                    href={`/jobs/${job.id}`}
+                    className="flex items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-wazifny-navy hover:bg-slate-50"
+                  >
+                    View job
+                  </Link>
                   {job.application_method === "external" ? (
                     <a
                       href={job.external_url || "#"}

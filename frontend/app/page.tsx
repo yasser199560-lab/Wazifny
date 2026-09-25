@@ -9,8 +9,8 @@ import CTABanner from "@/components/landing/CTABanner";
 import Footer from "@/components/landing/Footer";
 import { getLandingData } from "@/lib/api";
 
-// Always hit the backend for fresh counts instead of caching the page.
-export const dynamic = "force-dynamic";
+// Refresh public landing data periodically without making every visit wait.
+export const revalidate = 60;
 
 export default async function HomePage() {
   // Single server-side call to the FastAPI backend. If it's unreachable

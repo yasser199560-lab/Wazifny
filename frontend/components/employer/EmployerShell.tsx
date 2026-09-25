@@ -113,7 +113,7 @@ export default function EmployerShell({ children }: { children: React.ReactNode 
     <div className="flex min-h-screen bg-slate-50">
       <aside className="hidden w-72 shrink-0 flex-col bg-wazifny-navy px-5 py-6 md:flex">
         <Link href="/" className="mb-8 flex items-center px-1">
-          <Image src="/images/wazifny-logo-horizontal.png" alt="Wazifny" width={124} height={32} />
+          <Image src="/images/wazifny-logo-horizontal.png" alt="Wazifny" width={124} height={32} className="h-8 w-auto" />
         </Link>
 
         <div className="mb-6 flex items-center gap-3 rounded-xl bg-white/5 px-3 py-3">

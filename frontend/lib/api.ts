@@ -231,9 +231,8 @@ export function getCurrentUser(token: string) {
 export async function getLandingData(): Promise<LandingData | null> {
   try {
     return await request<LandingData>("/public/landing-data", {
-      // Always get fresh counts — this is a live dashboard-style stat bar,
-      // not content that should be cached across deploys.
-      cache: "no-store",
+      // Refresh public landing data periodically instead of blocking every visit.
+      next: { revalidate: 60 },
     });
   } catch {
     return null;

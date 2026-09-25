@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { ExternalLink, Loader2, MapPin, Search } from "lucide-react";
 import TalentShell from "@/components/talent/TalentShell";
 import { ApiError, applyToJob, companyImageUrl, saveJob, searchJobs, type Job } from "@/lib/api";
@@ -119,8 +120,9 @@ export default function BrowseJobsPage() {
               <div className="flex h-32 shrink-0 items-center justify-center bg-gradient-to-br from-slate-50 to-emerald-50 sm:h-auto sm:w-44">{job.company_logo_url ? <img src={companyImageUrl(job.company_logo_url) ?? ""} alt={`${job.company_name || "Company"} logo`} loading="lazy" className="h-20 w-20 rounded-xl bg-white object-contain p-2 shadow-sm" /> : <span className="flex h-20 w-20 items-center justify-center rounded-xl bg-wazifny-navy text-2xl font-bold text-white shadow-sm">{(job.company_name || "W").slice(0, 1).toUpperCase()}</span>}</div>
               <div className="flex flex-1 flex-col justify-between gap-3 p-5 sm:flex-row sm:items-center">
               <div className="min-w-0">
-                <h3 className="font-semibold text-wazifny-navy">{job.title}</h3>
+                <h3 className="font-semibold text-wazifny-navy"><Link href={`/jobs/${job.id}`} className="hover:text-wazifny-green hover:underline">{job.title}</Link></h3>
                 <p className="text-sm text-slate-400">{job.company_name}</p>
+                <Link href={`/jobs/${job.id}`} className="mt-2 inline-block text-xs font-semibold text-wazifny-green hover:underline">View job details</Link>
                 <div className="mt-2 flex flex-wrap gap-2 text-xs">
                   <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-slate-500">
                     <MapPin className="h-3 w-3" /> {job.location}
