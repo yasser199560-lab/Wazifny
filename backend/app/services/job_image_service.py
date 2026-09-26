@@ -1,6 +1,7 @@
 """Extract suggested job-post fields from an employer-provided image."""
 
 import base64
+import json
 import logging
 from datetime import date
 from urllib.parse import urlsplit
@@ -9,7 +10,6 @@ import httpx
 
 from app.core.config import settings
 from app.schemas.job import JobDraft
-from app.services.ai_service import extract_json
 
 logger = logging.getLogger("wazifny.job_image")
 _MAX_IMAGE_BYTES = 3 * 1024 * 1024
@@ -20,6 +20,20 @@ _IMAGE_SIGNATURES = {
 }
 _FIELDS = tuple(JobDraft.model_fields)
 _LIST_FIELDS = {"responsibilities", "requirements", "nice_to_have", "benefits"}
+
+
+def _extract_job_object(text: str) -> dict | None:
+    decoder = json.JSONDecoder()
+    for start, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            value, _end = decoder.raw_decode(text, start)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
+    return None
 
 
 class JobImageError(ValueError):
@@ -101,7 +115,23 @@ async def analyze_job_image(content: bytes, mime_type: str) -> JobDraft | None:
             {"text": "Read this job-ad image and extract the fields as JSON."},
             {"inline_data": {"mime_type": mime_type, "data": base64.b64encode(content).decode("ascii")}},
         ]}],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 2048},
+        "generationConfig": {
+            "temperature": 0.1,
+            "maxOutputTokens": 2048,
+            "responseMimeType": "application/json",
+            "responseSchema": {
+                "type": "OBJECT",
+                "properties": {
+                    field: (
+                        {"type": "ARRAY", "items": {"type": "STRING"}}
+                        if field in _LIST_FIELDS
+                        else {"type": "STRING"}
+                    )
+                    for field in _FIELDS
+                },
+                "required": list(_FIELDS),
+            },
+        },
     }
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(35.0, connect=5.0)) as client:
@@ -113,10 +143,32 @@ async def analyze_job_image(content: bytes, mime_type: str) -> JobDraft | None:
         if response.status_code != 200:
             logger.warning("Job image analysis failed with HTTP %s", response.status_code)
             return None
-        parts = response.json()["candidates"][0]["content"]["parts"]
-        parsed = extract_json("".join(part.get("text", "") for part in parts))
+        response_data = response.json()
+        candidates = response_data.get("candidates") or []
+        if not candidates:
+            block_reason = (response_data.get("promptFeedback") or {}).get("blockReason", "none")
+            logger.warning("Job image analysis returned no candidate (block_reason=%s)", block_reason)
+            return None
+        candidate = candidates[0]
+        parts = (candidate.get("content") or {}).get("parts") or []
+        answer_parts = [
+            part["text"]
+            for part in parts
+            if isinstance(part, dict)
+            and isinstance(part.get("text"), str)
+            and not part.get("thought", False)
+        ]
+        answer_text = "".join(answer_parts)
+        parsed = next(
+            (value for part in answer_parts if (value := _extract_job_object(part)) is not None),
+            None,
+        ) or _extract_job_object(answer_text)
         if not isinstance(parsed, dict):
-            logger.warning("Job image analysis returned invalid JSON")
+            logger.warning(
+                "Job image analysis returned no JSON object (finish_reason=%s, text_length=%d)",
+                candidate.get("finishReason", "unknown"),
+                len(answer_text),
+            )
             return None
         return _normalize_fields(parsed)
     except Exception as exc:
