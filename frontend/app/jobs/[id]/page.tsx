@@ -124,6 +124,7 @@ export default function JobDetailPage() {
   const translatedTitle = translatedText?.[0] ?? job.title;
   const translatedDescription = translatedText?.[1] ?? job.description;
   const translatedRequirements = translatedText?.slice(2) ?? job.requirements;
+  const externalApplyUrl = safeExternalUrl(job.external_url);
 
   return (
     <main>
@@ -164,6 +165,8 @@ export default function JobDetailPage() {
               <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-600">
                 {job.category}
               </span>
+              {job.employment_level && <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-600">{job.employment_level}</span>}
+              {job.work_arrangement && <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-600">{job.work_arrangement}</span>}
               {job.application_method === "external" && (
                 <span className="rounded-full bg-slate-200 px-3 py-1.5 text-sm text-slate-600">
                   External Application
@@ -182,6 +185,10 @@ export default function JobDetailPage() {
               {translatedDescription}
             </p>
 
+            {job.company_description && <JobSection title="About the Company"><p className="whitespace-pre-line leading-relaxed text-slate-600">{job.company_description}</p></JobSection>}
+            {job.working_hours && <JobSection title="Working Hours"><p className="text-slate-600">{job.working_hours}</p></JobSection>}
+            {job.responsibilities?.length > 0 && <JobSection title="Responsibilities"><JobList items={job.responsibilities} /></JobSection>}
+
             {job.requirements?.length > 0 && (
               <>
                 <h2 className="mt-8 text-lg font-semibold text-wazifny-navy">{t("Requirements")}</h2>
@@ -195,6 +202,9 @@ export default function JobDetailPage() {
                 </ul>
               </>
             )}
+            {job.nice_to_have?.length > 0 && <JobSection title="Nice to Have"><JobList items={job.nice_to_have} /></JobSection>}
+            {job.benefits?.length > 0 && <JobSection title="What We Offer"><JobList items={job.benefits} /></JobSection>}
+            {job.application_instructions && <JobSection title="How to Apply"><p className="whitespace-pre-line leading-relaxed text-slate-600">{job.application_instructions}</p></JobSection>}
           </div>
 
           <aside className="h-fit space-y-4 rounded-xl border border-slate-100 bg-white p-6 shadow-card">
@@ -204,6 +214,7 @@ export default function JobDetailPage() {
                 <p className="text-lg font-bold text-wazifny-green">{job.salary}</p>
               </div>
             )}
+            {job.application_deadline && <div><p className="text-xs uppercase tracking-wide text-slate-400">Application deadline</p><p className="font-semibold text-wazifny-navy">{new Date(`${job.application_deadline}T00:00:00`).toLocaleDateString()}</p></div>}
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-400">{t("Company")}</p>
               <p className="font-medium text-wazifny-navy">{job.company_name || "Wazifny Partner"}</p>
@@ -211,10 +222,11 @@ export default function JobDetailPage() {
 
             {job.application_method === "external" ? (
               <a
-                href={job.external_url || "#"}
+                href={externalApplyUrl || undefined}
                 target="_blank"
                 rel="noreferrer"
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-wazifny-orange px-4 py-3 text-sm font-semibold text-white hover:bg-wazifny-orange-dark"
+                aria-disabled={!externalApplyUrl}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-wazifny-orange px-4 py-3 text-sm font-semibold text-white hover:bg-wazifny-orange-dark aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
               >
                 Apply on Company Site <ExternalLink className="h-4 w-4" />
               </a>
@@ -252,4 +264,22 @@ export default function JobDetailPage() {
       <Footer />
     </main>
   );
+}
+
+function JobSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return <section className="mt-8"><h2 className="text-lg font-semibold text-wazifny-navy">{title}</h2><div className="mt-2">{children}</div></section>;
+}
+
+function JobList({ items }: { items: string[] }) {
+  return <ul className="space-y-2">{items.map((item, index) => <li key={`${index}-${item}`} className="flex items-start gap-2 text-slate-600"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-wazifny-green" />{item}</li>)}</ul>;
+}
+
+function safeExternalUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }

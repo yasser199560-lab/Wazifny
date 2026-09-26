@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 
 from bson import ObjectId
@@ -5,11 +6,34 @@ from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.db.mongodb import get_database
-from app.schemas.job import JobCreate, JobOut, JobSearchResponse, RecommendedJobsResponse
+from app.schemas.job import JobCreate, JobDraft, JobOut, JobSearchResponse, RecommendedJobsResponse
 from app.services.matching_service import get_recommended_jobs, mark_applied_jobs, search_jobs
 from app.utils.deps import get_optional_current_user, require_role
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+@router.get("/draft", response_model=JobDraft)
+async def get_job_draft(current_user: dict = Depends(require_role("employer"))) -> dict:
+    draft = await get_database().job_drafts.find_one({"employer_id": current_user["id"]})
+    return JobDraft(**(draft or {})).model_dump()
+
+
+@router.put("/draft", response_model=JobDraft)
+async def save_job_draft(
+    payload: JobDraft, current_user: dict = Depends(require_role("employer"))
+) -> dict:
+    draft = {**payload.model_dump(), "employer_id": current_user["id"], "updated_at": datetime.now(timezone.utc)}
+    await get_database().job_drafts.update_one(
+        {"employer_id": current_user["id"]}, {"$set": draft}, upsert=True
+    )
+    return payload.model_dump()
+
+
+@router.delete("/draft", status_code=204)
+async def delete_job_draft(current_user: dict = Depends(require_role("employer"))) -> None:
+    await get_database().job_drafts.delete_one({"employer_id": current_user["id"]})
 
 
 def _serialize(doc: dict) -> dict:
@@ -97,7 +121,7 @@ async def create_job(
     company_logo_url = employer_profile.get("logo_url") if employer_profile else None
 
     job_doc = {
-        **payload.model_dump(),
+        **payload.model_dump(mode="json"),
         "employer_id": current_user["id"],
         "company_name": company_name,
         "company_logo_url": company_logo_url,
@@ -106,6 +130,10 @@ async def create_job(
         "posted_at": datetime.now(timezone.utc),
     }
     result = await db.jobs.insert_one(job_doc)
+    try:
+        await db.job_drafts.delete_one({"employer_id": current_user["id"]})
+    except Exception:
+        logger.exception("Published job %s but could not clear employer draft", result.inserted_id)
     return _serialize({**job_doc, "_id": result.inserted_id})
 
 
@@ -176,7 +204,7 @@ async def update_job(
     if not job or job.get("employer_id") != current_user["id"]:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    await db.jobs.update_one({"_id": job["_id"]}, {"$set": payload.model_dump()})
+    await db.jobs.update_one({"_id": job["_id"]}, {"$set": payload.model_dump(mode="json")})
     updated = await db.jobs.find_one({"_id": job["_id"]})
     return _serialize(updated)
 

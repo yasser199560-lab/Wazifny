@@ -95,7 +95,16 @@ export interface Job {
   application_method: "in_platform" | "external";
   external_url: string | null;
   description: string;
+  company_description?: string;
+  employment_level?: string;
+  work_arrangement?: string;
+  working_hours?: string;
+  responsibilities?: string[];
   requirements: string[];
+  nice_to_have?: string[];
+  benefits?: string[];
+  application_instructions?: string;
+  application_deadline?: string | null;
   status: string;
   posted_at: string | null;
   company_name: string | null;
@@ -563,7 +572,50 @@ export interface JobCreate {
   application_method: "in_platform" | "external";
   external_url?: string | null;
   description: string;
+  company_description: string;
+  employment_level: string;
+  work_arrangement: string;
+  working_hours: string;
+  responsibilities: string[];
   requirements: string[];
+  nice_to_have: string[];
+  benefits: string[];
+  application_instructions: string;
+  application_deadline: string | null;
+}
+
+export interface JobDraft {
+  title: string;
+  category: string;
+  location: string;
+  salary_min: string;
+  salary_max: string;
+  job_type: string;
+  description: string;
+  company_description: string;
+  employment_level: string;
+  work_arrangement: string;
+  working_hours: string;
+  responsibilities: string;
+  requirements: string;
+  nice_to_have: string;
+  benefits: string;
+  application_method: "in_platform" | "external";
+  external_url: string;
+  application_instructions: string;
+  application_deadline: string;
+}
+
+export function getJobDraft(token: string) {
+  return request<JobDraft>("/jobs/draft", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+}
+
+export function saveJobDraft(token: string, payload: JobDraft) {
+  return request<JobDraft>("/jobs/draft", { method: "PUT", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
+}
+
+export function deleteJobDraft(token: string) {
+  return request<void>("/jobs/draft", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
 }
 
 export function updateJob(token: string, jobId: string, payload: JobCreate) {
