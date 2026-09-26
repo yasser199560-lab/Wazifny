@@ -13,7 +13,7 @@
     "external_url": str | None,
     "description": str,
     "source": "wazifny" | "external",
-    "status": "active" | "closed" | "pending_review",
+    "status": "active" | "pending" | "closed" | "removed",
     "posted_at": datetime,
 }
 """
