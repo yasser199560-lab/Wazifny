@@ -1,8 +1,10 @@
 """Extract suggested job-post fields from an employer-provided image."""
 
+import asyncio
 import base64
 import json
 import logging
+import random
 from datetime import date
 from urllib.parse import urlsplit
 
@@ -20,6 +22,56 @@ _IMAGE_SIGNATURES = {
 }
 _FIELDS = tuple(JobDraft.model_fields)
 _LIST_FIELDS = {"responsibilities", "requirements", "nice_to_have", "benefits"}
+_RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+
+
+def _parse_gemini_response(response: httpx.Response) -> JobDraft | None:
+    response_data = response.json()
+    candidates = response_data.get("candidates") or []
+    if not candidates:
+        block_reason = (response_data.get("promptFeedback") or {}).get("blockReason", "none")
+        logger.warning("Job image analysis returned no candidate (block_reason=%s)", block_reason)
+        return None
+    candidate = candidates[0]
+    parts = (candidate.get("content") or {}).get("parts") or []
+    answer_parts = [
+        part["text"]
+        for part in parts
+        if isinstance(part, dict)
+        and isinstance(part.get("text"), str)
+        and not part.get("thought", False)
+    ]
+    answer_text = "".join(answer_parts)
+    parsed = next(
+        (value for part in answer_parts if (value := _extract_job_object(part)) is not None),
+        None,
+    ) or _extract_job_object(answer_text)
+    if not isinstance(parsed, dict):
+        logger.warning(
+            "Job image analysis returned no JSON object (finish_reason=%s, text_length=%d)",
+            candidate.get("finishReason", "unknown"),
+            len(answer_text),
+        )
+        return None
+    return _normalize_fields(parsed)
+
+
+def _error_details(response: httpx.Response) -> tuple[str, str]:
+    try:
+        error = response.json().get("error", {})
+        return str(error.get("status", "unknown")), str(error.get("message", ""))[:240]
+    except (ValueError, AttributeError):
+        return "unknown", ""
+
+
+def _retry_delay(response: httpx.Response, retry_index: int) -> float:
+    retry_after = response.headers.get("Retry-After")
+    if retry_after:
+        try:
+            return min(max(float(retry_after), 0.0), 5.0)
+        except ValueError:
+            pass
+    return min(2**retry_index, 4) + random.uniform(0.0, 0.25)
 
 
 def _extract_job_object(text: str) -> dict | None:
@@ -105,10 +157,6 @@ async def analyze_job_image(content: bytes, mime_type: str) -> JobDraft | None:
         "external. Use YYYY-MM-DD for application_deadline only when the full date "
         "is readable."
     )
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{settings.gemini_model}:generateContent"
-    )
     payload = {
         "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"role": "user", "parts": [
@@ -133,44 +181,60 @@ async def analyze_job_image(content: bytes, mime_type: str) -> JobDraft | None:
             },
         },
     }
+    models = [settings.gemini_model]
+    fallback_model = (settings.gemini_image_fallback_model or "").strip()
+    if fallback_model and fallback_model not in models:
+        models.append(fallback_model)
+
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(35.0, connect=5.0)) as client:
-            response = await client.post(
-                url,
-                json=payload,
-                headers={"Content-Type": "application/json", "x-goog-api-key": settings.gemini_api_key},
-            )
-        if response.status_code != 200:
-            logger.warning("Job image analysis failed with HTTP %s", response.status_code)
-            return None
-        response_data = response.json()
-        candidates = response_data.get("candidates") or []
-        if not candidates:
-            block_reason = (response_data.get("promptFeedback") or {}).get("blockReason", "none")
-            logger.warning("Job image analysis returned no candidate (block_reason=%s)", block_reason)
-            return None
-        candidate = candidates[0]
-        parts = (candidate.get("content") or {}).get("parts") or []
-        answer_parts = [
-            part["text"]
-            for part in parts
-            if isinstance(part, dict)
-            and isinstance(part.get("text"), str)
-            and not part.get("thought", False)
-        ]
-        answer_text = "".join(answer_parts)
-        parsed = next(
-            (value for part in answer_parts if (value := _extract_job_object(part)) is not None),
-            None,
-        ) or _extract_job_object(answer_text)
-        if not isinstance(parsed, dict):
-            logger.warning(
-                "Job image analysis returned no JSON object (finish_reason=%s, text_length=%d)",
-                candidate.get("finishReason", "unknown"),
-                len(answer_text),
-            )
-            return None
-        return _normalize_fields(parsed)
+        async with httpx.AsyncClient(timeout=httpx.Timeout(25.0, connect=5.0)) as client:
+            retry_index = 0
+            for model_index, model in enumerate(models):
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+                for attempt in range(2):
+                    try:
+                        response = await client.post(
+                            url,
+                            json=payload,
+                            headers={"Content-Type": "application/json", "x-goog-api-key": settings.gemini_api_key},
+                        )
+                    except httpx.RequestError as exc:
+                        logger.warning(
+                            "Gemini image request failed on model %s (%s)", model, type(exc).__name__
+                        )
+                        if attempt == 0:
+                            await asyncio.sleep(min(2**retry_index, 4) + random.uniform(0.0, 0.25))
+                            retry_index += 1
+                            continue
+                        break
+
+                    if response.status_code == 200:
+                        try:
+                            fields = _parse_gemini_response(response)
+                        except (ValueError, KeyError, TypeError) as exc:
+                            logger.warning("Gemini image response could not be decoded (%s)", type(exc).__name__)
+                            fields = None
+                        if fields is not None:
+                            return fields
+                        break
+
+                    error_status, error_message = _error_details(response)
+                    logger.warning(
+                        "Gemini image request failed (model=%s, HTTP %s, status=%s, message=%s)",
+                        model,
+                        response.status_code,
+                        error_status,
+                        error_message or "no provider message",
+                    )
+                    if response.status_code not in _RETRYABLE_STATUS_CODES:
+                        return None
+                    if response.status_code == 429 and "quota" in error_message.lower():
+                        return None
+                    if attempt == 0:
+                        await asyncio.sleep(_retry_delay(response, retry_index))
+                        retry_index += 1
+                if model_index + 1 < len(models):
+                    logger.info("Retrying job image analysis with fallback model %s", models[model_index + 1])
     except Exception as exc:
         logger.warning("Job image analysis failed: %s", type(exc).__name__)
-        return None
+    return None
