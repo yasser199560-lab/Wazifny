@@ -11,6 +11,11 @@ export default function ManageJobsPage() {
   const token = useAuthStore((s) => s.token);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    setSubmitted(new URLSearchParams(window.location.search).get("submitted") === "1");
+  }, []);
 
   async function load() {
     if (!token) return;
@@ -53,6 +58,12 @@ export default function ManageJobsPage() {
           <Plus className="h-4 w-4" /> Post New Job
         </Link>
       </div>
+
+      {submitted && (
+        <div role="status" aria-live="polite" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          Your job was submitted successfully and is awaiting administrator review. It will appear in Find Jobs and talent pages after approval.
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex justify-center py-24">

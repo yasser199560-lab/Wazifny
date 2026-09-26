@@ -211,7 +211,7 @@ export default function PostJobPage() {
           try { localStorage.removeItem(`wazifny:job-draft:${userId}`); } catch { /* storage can be unavailable */ }
         }
       }
-      router.push(editingJobId ? `/employer/manage-jobs/${job.id}` : `/jobs/${job.id}`);
+      router.push(editingJobId ? `/employer/manage-jobs/${job.id}` : "/employer/manage-jobs?submitted=1");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Couldn't save the job. Please check the fields and try again.");
       setIsSubmitting(false);
@@ -225,6 +225,7 @@ export default function PostJobPage() {
         <h1 className="text-2xl font-bold text-wazifny-navy">{editingJobId ? "Edit Job" : "Post a Job"}</h1>
       </div>
       <p className="mt-1 text-sm text-slate-500">Fill in the details to attract the right candidates</p>
+      {!editingJobId && <p className="mt-2 text-sm text-amber-700">After submission, your job will be reviewed by an administrator. It will appear in Find Jobs after approval.</p>}
       {!editingJobId && draftLoaded && <p aria-live="polite" className="mt-2 text-xs text-slate-500">{draftSaved ? "Draft saved" : "Saving your draft…"}</p>}
 
       <section className="mt-6 rounded-xl border border-violet-100 bg-violet-50/70 p-5" aria-label="AI job post image autofill">

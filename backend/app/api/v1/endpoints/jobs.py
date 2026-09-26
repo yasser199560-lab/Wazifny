@@ -151,7 +151,8 @@ async def create_job(
         "company_name": company_name,
         "company_logo_url": company_logo_url,
         "source": "wazifny",
-        "status": "active",
+        # New listings stay private until an administrator approves them.
+        "status": "pending",
         "posted_at": datetime.now(timezone.utc),
     }
     result = await db.jobs.insert_one(job_doc)
