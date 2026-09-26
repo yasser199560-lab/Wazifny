@@ -115,10 +115,14 @@ async def apply_to_job(
     # Send the talent's receipt independently of employer notifications.
     # A legacy job with a malformed employer record must not stop this email.
     try:
-        await send_application_confirmation_email(
+        email_sent = await send_application_confirmation_email(
             current_user["email"], current_user.get("full_name", "there"),
             job["title"], job.get("company_name"),
         )
+        if not email_sent:
+            logger.error("Application confirmation email was not accepted by Resend (application=%s)", out["id"])
+        else:
+            logger.info("Application confirmation email was accepted by Resend (application=%s)", out["id"])
     except Exception:  # noqa: BLE001
         logger.exception("Could not send application confirmation for job %s", payload.job_id)
 

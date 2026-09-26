@@ -964,3 +964,17 @@ export async function uploadCv(token: string, file: File): Promise<CvUploadRespo
   }
   return res.json();
 }
+
+export function removeCv(token: string) {
+  return request<TalentMe>("/talents/me/cv", {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function clearTalentProfile(token: string) {
+  return request<TalentMe>("/talents/me/profile/reset", {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}

@@ -35,7 +35,7 @@ logger = logging.getLogger("wazifny.ai")
 _TIMEOUT = httpx.Timeout(25.0, connect=5.0)
 
 
-async def _call_gemini(system_prompt: str, user_prompt: str) -> str | None:
+async def _call_gemini(system_prompt: str, user_prompt: str, *, json_mode: bool = False) -> str | None:
     """Calls Gemini's generateContent endpoint using the new (2026) "Auth"
     key format — sent as an `x-goog-api-key` header, NOT the old `?key=`
     query param that "Standard" keys (AIzaSy...) used. Every key AI Studio
@@ -49,7 +49,11 @@ async def _call_gemini(system_prompt: str, user_prompt: str) -> str | None:
     payload = {
         "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1024},
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": 4096 if json_mode else 1024,
+            **({"responseMimeType": "application/json"} if json_mode else {}),
+        },
     }
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
@@ -84,7 +88,7 @@ async def _call_gemini(system_prompt: str, user_prompt: str) -> str | None:
         return None
 
 
-async def _call_groq(system_prompt: str, user_prompt: str) -> str | None:
+async def _call_groq(system_prompt: str, user_prompt: str, *, json_mode: bool = False) -> str | None:
     if not settings.groq_api_key:
         return None
     try:
@@ -103,6 +107,7 @@ async def _call_groq(system_prompt: str, user_prompt: str) -> str | None:
                     "reasoning_effort": "low",
                     "include_reasoning": False,
                     "max_completion_tokens": 2048,
+                    **({"response_format": {"type": "json_object"}} if json_mode else {}),
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
@@ -146,14 +151,16 @@ async def _call_groq(system_prompt: str, user_prompt: str) -> str | None:
         return None
 
 
-async def ai_complete(system_prompt: str, user_prompt: str) -> tuple[str | None, str | None]:
+async def ai_complete(
+    system_prompt: str, user_prompt: str, *, json_mode: bool = False
+) -> tuple[str | None, str | None]:
     """Returns (text, provider_used). provider_used is 'gemini', 'groq', or
     None if both providers failed / are unconfigured."""
-    text = await _call_gemini(system_prompt, user_prompt)
+    text = await _call_gemini(system_prompt, user_prompt, json_mode=json_mode)
     if text:
         return text, "gemini"
 
-    text = await _call_groq(system_prompt, user_prompt)
+    text = await _call_groq(system_prompt, user_prompt, json_mode=json_mode)
     if text:
         return text, "groq"
 

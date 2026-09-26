@@ -3,13 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, FileText, Loader2, Plus, Sparkles, Trash2, Upload, X } from "lucide-react";
 import TalentShell from "@/components/talent/TalentShell";
+import { COUNTRIES } from "@/lib/countries";
 import {
   addEducation,
   addExperience,
   addSkill,
+  clearTalentProfile,
   deleteEducation,
   deleteExperience,
   getMyTalentProfile,
+  removeCv,
   removeSkill,
   updatePersonalInfo,
   uploadCv,
@@ -45,6 +48,8 @@ export default function ProfilePage() {
   const [expForm, setExpForm] = useState({ job_title: "", company_name: "" });
 
   const [cvUploading, setCvUploading] = useState(false);
+  const [cvRemoving, setCvRemoving] = useState(false);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [cvMessage, setCvMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,6 +76,15 @@ export default function ProfilePage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useEffect(() => {
+    if (!clearDialogOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !cvRemoving) setClearDialogOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [clearDialogOpen, cvRemoving]);
 
   async function handleSave() {
     if (!token) return;
@@ -117,6 +131,57 @@ export default function ProfilePage() {
       setCvMessage({ text: "Couldn't upload your CV. Please try again.", ok: false });
     } finally {
       setCvUploading(false);
+    }
+  }
+
+  async function handleCvRemove() {
+    if (!token || !profile) return;
+    const confirmed = window.confirm(
+      "Remove the uploaded CV and information extracted from it? Manually entered profile details and application records will be kept. Employers will no longer be able to open this CV."
+    );
+    if (!confirmed) return;
+
+    setCvRemoving(true);
+    setCvMessage(null);
+    try {
+      const updated = await removeCv(token);
+      setProfile(updated);
+      setForm({
+        phone: updated.phone || "",
+        city: updated.city || "",
+        country: updated.country || "",
+        headline: updated.headline || "",
+        dob: updated.dob || "",
+        gender: updated.gender || "",
+      });
+      setCvMessage({ text: "CV removed. Manually entered profile details and application records were kept.", ok: true });
+    } catch (error) {
+      setCvMessage({
+        text: error instanceof Error ? error.message : "Couldn't remove your CV. Please try again.",
+        ok: false,
+      });
+    } finally {
+      setCvRemoving(false);
+    }
+  }
+
+  async function handleClearAllProfileData() {
+    if (!token) return;
+    setClearDialogOpen(false);
+    setCvRemoving(true);
+    setCvMessage(null);
+    try {
+      const updated = await clearTalentProfile(token);
+      setProfile(updated);
+      setForm({ phone: "", city: "", country: "", headline: "", dob: "", gender: "" });
+      setCvMessage({ text: "All talent profile data was cleared. Your account and application records remain.", ok: true });
+    } catch (error) {
+      setCvMessage({
+        text: error instanceof Error ? error.message : "Couldn't clear your profile. Please try again.",
+        ok: false,
+      });
+    } finally {
+      setCvRemoving(false);
     }
   }
 
@@ -176,6 +241,11 @@ export default function ProfilePage() {
     profile.ai_filled_fields.length > 0 ||
     profile.education.some((entry) => entry.source === "ai_cv") ||
     profile.experience.some((entry) => entry.source === "ai_cv");
+  const hasProfileData = Boolean(
+    profile.cv_filename || profile.phone || profile.city || profile.country || profile.headline || profile.dob ||
+    profile.gender || profile.skills.length || profile.education.length || profile.experience.length ||
+    profile.preferred_categories.length
+  );
 
   return (
     <TalentShell>
@@ -188,7 +258,7 @@ export default function ProfilePage() {
         </div>
         <button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || cvRemoving}
           className="rounded-lg bg-wazifny-green px-5 py-2.5 text-sm font-semibold text-white hover:bg-wazifny-green-dark disabled:opacity-60"
         >
           {saving ? "Saving..." : savedMsg ? "Saved ✓" : "Save Changes"}
@@ -238,29 +308,50 @@ export default function ProfilePage() {
               <FileText className="h-4 w-4 text-slate-400" />
               <span>{profile.cv_filename}</span>
             </div>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={cvUploading}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-wazifny-navy hover:bg-white disabled:opacity-60"
-            >
-              {cvUploading ? "Uploading..." : "Re-upload"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={cvUploading || cvRemoving}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-wazifny-navy hover:bg-white disabled:opacity-60"
+              >
+                {cvUploading ? "Uploading..." : "Re-upload"}
+              </button>
+              <button
+                onClick={handleCvRemove}
+                disabled={cvUploading || cvRemoving}
+                className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
+              >
+                {cvRemoving ? "Removing..." : "Remove CV"}
+              </button>
+            </div>
           </div>
         ) : (
+          <>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={cvUploading || cvRemoving}
+              className="mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-200 py-8 text-slate-400 hover:border-wazifny-green hover:text-wazifny-green disabled:opacity-60"
+            >
+              {cvUploading ? (
+                <Loader2 className="h-6 w-6 animate-spin" />
+              ) : (
+                <Upload className="h-6 w-6" />
+              )}
+              <span className="text-sm font-medium">
+                {cvUploading ? "Reading your CV..." : "Upload your CV (PDF or DOCX)"}
+              </span>
+              <span className="text-xs">AI will auto-fill your profile from it</span>
+            </button>
+          </>
+        )}
+
+        {hasProfileData && (
           <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={cvUploading}
-            className="mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-200 py-8 text-slate-400 hover:border-wazifny-green hover:text-wazifny-green disabled:opacity-60"
+            onClick={() => setClearDialogOpen(true)}
+            disabled={cvUploading || cvRemoving}
+            className="mt-3 rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
           >
-            {cvUploading ? (
-              <Loader2 className="h-6 w-6 animate-spin" />
-            ) : (
-              <Upload className="h-6 w-6" />
-            )}
-            <span className="text-sm font-medium">
-              {cvUploading ? "Reading your CV..." : "Upload your CV (PDF or DOCX)"}
-            </span>
-            <span className="text-xs">AI will auto-fill your profile from it</span>
+            Clear all profile data
           </button>
         )}
 
@@ -287,6 +378,47 @@ export default function ProfilePage() {
           </p>
         )}
       </div>
+
+      {clearDialogOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setClearDialogOpen(false);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="clear-profile-title"
+            aria-describedby="clear-profile-warning"
+            className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"
+          >
+            <h2 id="clear-profile-title" className="text-lg font-bold text-red-700">Clear all profile data?</h2>
+            <p id="clear-profile-warning" className="mt-3 text-sm leading-6 text-slate-600">
+              Continuing permanently removes your CV, profile details, education, experience, skills, and preferences from Wazifny. Companies you applied to will no longer see this profile information here. We cannot remove copies an employer may already have downloaded or saved outside Wazifny.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setClearDialogOpen(false)}
+                disabled={cvRemoving}
+                autoFocus
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleClearAllProfileData}
+                disabled={cvRemoving}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                {cvRemoving ? "Clearing..." : "Continue"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {/* Personal Info */}
       <div className="mt-6 rounded-xl border border-slate-100 bg-white p-6 shadow-card">
@@ -323,12 +455,21 @@ export default function ProfilePage() {
             />
           </Field>
           <Field label="Country" ai={aiFields.has("country")}>
-            <input
+            <select
               value={form.country}
               onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))}
               className={inputClass}
-              placeholder="Lebanon"
-            />
+            >
+              <option value="">Select a country...</option>
+              {form.country && !COUNTRIES.some((country) => country.name === form.country) && (
+                <option value={form.country}>{form.country}</option>
+              )}
+              {COUNTRIES.map((country) => (
+                <option key={country.code} value={country.name}>
+                  {country.flag} {country.name}
+                </option>
+              ))}
+            </select>
           </Field>
           <Field label="Date of Birth">
             <input

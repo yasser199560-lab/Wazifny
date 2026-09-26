@@ -3,6 +3,7 @@ import logging
 
 from bson import ObjectId
 from bson.errors import InvalidId
+from gridfs.errors import NoFile
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from app.db.mongodb import get_database
@@ -400,7 +401,13 @@ async def upload_cv(
 
     updated_profile = await get_my_talent_profile(current_user)
 
-    if not parsed_ok:
+    if not parsed_ok and provider:
+        message = (
+            "Your CV was uploaded, but the AI provider returned data that "
+            "couldn't be parsed safely. Please fill in your profile manually "
+            "below; your existing profile information was left unchanged."
+        )
+    elif not parsed_ok:
         message = (
             "Your CV was uploaded, but AI parsing isn't available right now "
             "(both Gemini and Groq are unreachable) — please fill in your "
@@ -435,3 +442,86 @@ async def upload_cv(
         "skills_added": skills_added,
         "message": message,
     }
+
+
+async def _delete_cv_file(db, talent_id: str, profile: dict) -> None:
+    """Remove a talent-owned GridFS file, if present, without touching other data."""
+    from motor.motor_asyncio import AsyncIOMotorGridFSBucket
+
+    file_id = profile.get("cv_file_id")
+    if file_id:
+        try:
+            object_id = ObjectId(file_id)
+        except (InvalidId, TypeError):
+            logger.warning("Talent %s has an invalid stored CV file id; clearing its reference", talent_id)
+        else:
+            bucket = AsyncIOMotorGridFSBucket(db)
+            try:
+                await bucket.delete(object_id)
+            except NoFile:
+                # The GridFS file may already have been removed; continue
+                # cleaning its stale profile reference and parsed fields.
+                logger.info("CV file was already absent for talent %s", talent_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Could not remove CV file for talent %s", talent_id)
+                raise HTTPException(status_code=503, detail="Could not remove your CV right now. Please try again.") from exc
+
+
+@router.delete("/me/cv", response_model=TalentMeOut)
+async def delete_my_cv(current_user: dict = Depends(require_role("talent"))) -> dict:
+    """Remove the CV and only profile details sourced from CV parsing."""
+    db = get_database()
+    talent_id = current_user["id"]
+    profile = await db.talent_profiles.find_one({"user_id": talent_id}) or {}
+    await _delete_cv_file(db, talent_id, profile)
+
+    unset_fields = {
+        field: ""
+        for field in profile.get("ai_filled_fields", [])
+        if field in _CV_SCALAR_FIELDS
+    }
+    unset_fields.update({"cv_file_id": "", "cv_filename": "", "cv_uploaded_at": ""})
+    await db.talent_profiles.update_one(
+        {"user_id": talent_id},
+        {"$set": {"user_id": talent_id, "ai_filled_fields": []}, "$unset": unset_fields},
+        upsert=True,
+    )
+    await db.educations.delete_many({"talent_id": talent_id, "source": "ai_cv"})
+    await db.experiences.delete_many({"talent_id": talent_id, "source": "ai_cv"})
+    await db.talent_skills.delete_many({"talent_id": talent_id, "source": "ai_cv"})
+
+    return await get_my_talent_profile(current_user)
+
+
+@router.delete("/me/profile/reset", response_model=TalentMeOut)
+async def clear_talent_profile(current_user: dict = Depends(require_role("talent"))) -> dict:
+    """Clear all profile content while preserving account and applications."""
+    db = get_database()
+    talent_id = current_user["id"]
+    profile = await db.talent_profiles.find_one({"user_id": talent_id}) or {}
+    await _delete_cv_file(db, talent_id, profile)
+
+    await db.talent_profiles.update_one(
+        {"user_id": talent_id},
+        {
+            "$set": {"user_id": talent_id, "ai_filled_fields": []},
+            "$unset": {
+                field: ""
+                for field in (
+                    *_CV_SCALAR_FIELDS,
+                    "dob",
+                    "gender",
+                    "cv_file_id",
+                    "cv_filename",
+                    "cv_uploaded_at",
+                )
+            },
+        },
+        upsert=True,
+    )
+    await db.educations.delete_many({"talent_id": talent_id})
+    await db.experiences.delete_many({"talent_id": talent_id})
+    await db.talent_skills.delete_many({"talent_id": talent_id})
+    await db.work_preferences.delete_one({"talent_id": talent_id})
+
+    return await get_my_talent_profile(current_user)

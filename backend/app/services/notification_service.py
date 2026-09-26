@@ -5,6 +5,7 @@ request. Configure a verified Resend sender domain with SPF/DKIM for real
 deliverability; the free plan is suitable for early-stage notification volume.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from html import escape
@@ -16,6 +17,7 @@ from app.core.config import settings
 
 logger = logging.getLogger("wazifny.notify")
 _TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+_EMAIL_ATTEMPTS = 3
 _FREE_EMAIL_DOMAINS = {"gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "aol.com", "live.com", "msn.com"}
 _warned_configuration = False
 
@@ -66,14 +68,53 @@ async def send_email(to_email: str, to_name: str, subject: str, html_body: str) 
     if settings.resend_reply_to:
         payload["reply_to"] = settings.resend_reply_to
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            response = await client.post("https://api.resend.com/emails", headers={"Authorization": f"Bearer {settings.resend_api_key}", "Content-Type": "application/json"}, json=payload)
-        if response.status_code in {200, 201}:
-            logger.info("Resend email sent to %s: %r", to_email, subject)
-            return True
-        logger.warning("Resend email failed (%s) to %s: %s", response.status_code, to_email, response.text[:300])
+        client_context = httpx.AsyncClient(timeout=_TIMEOUT)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Resend email raised %s: %s", type(exc).__name__, exc)
+        logger.warning("Could not initialize Resend email client (%s)", type(exc).__name__)
+        return False
+
+    async with client_context as client:
+        for attempt in range(1, _EMAIL_ATTEMPTS + 1):
+            try:
+                response = await client.post(
+                    "https://api.resend.com/emails",
+                    headers={
+                        "Authorization": f"Bearer {settings.resend_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+                if 200 <= response.status_code < 300:
+                    try:
+                        response_data = response.json() if response.content else {}
+                    except ValueError:
+                        response_data = {}
+                    logger.info(
+                        "Resend accepted email (id=%s, attempt=%d/%d)",
+                        response_data.get("id", "unknown"), attempt, _EMAIL_ATTEMPTS,
+                    )
+                    return True
+
+                retryable = response.status_code == 429 or response.status_code >= 500
+                logger.warning(
+                    "Resend email failed (HTTP %d, attempt %d/%d): %s",
+                    response.status_code, attempt, _EMAIL_ATTEMPTS, response.text[:300],
+                )
+                if not retryable or attempt == _EMAIL_ATTEMPTS:
+                    return False
+            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                logger.warning(
+                    "Resend email transport error (%s, attempt %d/%d)",
+                    type(exc).__name__, attempt, _EMAIL_ATTEMPTS,
+                )
+                if attempt == _EMAIL_ATTEMPTS:
+                    return False
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Unexpected Resend email error (%s)", type(exc).__name__)
+                return False
+
+            # Brief backoff for throttling, provider outages, and transient network faults.
+            await asyncio.sleep(0.5 * (2 ** (attempt - 1)))
     return False
 
 

@@ -92,13 +92,13 @@ async def parse_cv_fields(raw_text: str) -> tuple[dict | None, str | None]:
     )
     user_prompt = f"CV text:\n\n{raw_text}"
 
-    raw, provider = await ai_complete(system_prompt, user_prompt)
+    raw, provider = await ai_complete(system_prompt, user_prompt, json_mode=True)
     if not raw:
         return None, None
 
     parsed = extract_json(raw)
     if not isinstance(parsed, dict):
-        logger.warning("CV parse: AI response wasn't a JSON object, discarding.")
+        logger.warning("CV parse: %s returned a response that was not a JSON object; discarding it.", provider)
         return None, provider
 
     # Defensive shape-normalization — never trust the model's output blindly.

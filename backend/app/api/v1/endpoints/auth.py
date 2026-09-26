@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -16,6 +17,7 @@ from app.services.notification_service import send_password_reset_email
 from app.utils.deps import get_current_user
 
 router = APIRouter()
+logger = logging.getLogger("wazifny.auth")
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -122,7 +124,10 @@ async def forgot_password(payload: ForgotPasswordRequest) -> None:
     # users see a success message but receive a Gmail-blocked link.
     delivered = await send_password_reset_email(user["email"], user.get("full_name", ""), token)
     if not delivered:
+        logger.error("Password reset email was not accepted by Resend")
         return
+
+    logger.info("Password reset email was accepted by Resend")
 
     await db.password_resets.insert_one(
         {
