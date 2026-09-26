@@ -3,11 +3,16 @@ from datetime import datetime, timezone
 
 from bson import ObjectId
 from bson.errors import InvalidId
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
 from app.db.mongodb import get_database
 from app.schemas.job import JobCreate, JobDraft, JobOut, JobSearchResponse, RecommendedJobsResponse
 from app.services.matching_service import get_recommended_jobs, mark_applied_jobs, search_jobs
+from app.services.job_image_service import (
+    JobImageError,
+    analyze_job_image,
+    validate_job_image,
+)
 from app.utils.deps import get_optional_current_user, require_role
 
 router = APIRouter()
@@ -34,6 +39,26 @@ async def save_job_draft(
 @router.delete("/draft", status_code=204)
 async def delete_job_draft(current_user: dict = Depends(require_role("employer"))) -> None:
     await get_database().job_drafts.delete_one({"employer_id": current_user["id"]})
+
+
+@router.post("/analyze-image")
+async def analyze_job_post_image(
+    file: UploadFile = File(...),
+    _current_user: dict = Depends(require_role("employer")),
+) -> dict:
+    content = await file.read(3 * 1024 * 1024 + 1)
+    await file.close()
+    try:
+        mime_type = validate_job_image(content, file.content_type)
+    except JobImageError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    fields = await analyze_job_image(content, mime_type)
+    if fields is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Image analysis is unavailable right now. You can still complete the form manually.",
+        )
+    return {"fields": fields.model_dump(), "provider": "gemini"}
 
 
 def _serialize(doc: dict) -> dict:

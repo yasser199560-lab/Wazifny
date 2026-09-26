@@ -606,6 +606,27 @@ export interface JobDraft {
   application_deadline: string;
 }
 
+export async function analyzeJobPostImage(token: string, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(`${API_BASE_URL}/jobs/analyze-image`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!response.ok) {
+    let message = response.statusText;
+    try {
+      const body = await response.json();
+      message = body.detail ?? message;
+    } catch {
+      // Keep the HTTP status text when the response is not JSON.
+    }
+    throw new ApiError(typeof message === "string" ? message : "Image analysis failed", response.status);
+  }
+  return response.json() as Promise<{ fields: JobDraft; provider: string }>;
+}
+
 export function getJobDraft(token: string) {
   return request<JobDraft>("/jobs/draft", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
 }

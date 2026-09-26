@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, FilePlus, Loader2 } from "lucide-react";
+import { CheckCircle2, FilePlus, Loader2, Sparkles } from "lucide-react";
 import EmployerShell from "@/components/employer/EmployerShell";
-import { createJob, deleteJobDraft, getJobDraft, getMyJob, saveJobDraft, updateJob, type JobCreate, type JobDraft } from "@/lib/api";
+import { analyzeJobPostImage, createJob, deleteJobDraft, getJobDraft, getMyJob, saveJobDraft, updateJob, type JobCreate, type JobDraft } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
 
 const CATEGORY_OPTIONS = [
@@ -38,6 +38,9 @@ export default function PostJobPage() {
   const [error, setError] = useState<string | null>(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+  const [imageAnalysisMessage, setImageAnalysisMessage] = useState<string | null>(null);
   const draftSaveQueue = useRef<Promise<unknown>>(Promise.resolve());
 
   const [form, setForm] = useState<JobDraft>(EMPTY_FORM);
@@ -129,6 +132,31 @@ export default function PostJobPage() {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  async function analyzeSelectedImage() {
+    if (!token || !imageFile) return;
+    setIsAnalyzingImage(true);
+    setImageAnalysisMessage(null);
+    try {
+      const result = await analyzeJobPostImage(token, imageFile);
+      setForm((current) => {
+        const next = { ...current };
+        for (const key of Object.keys(result.fields) as (keyof JobDraft)[]) {
+          const suggestion = result.fields[key];
+          if (!current[key].trim() && suggestion.trim()) {
+            Object.assign(next, { [key]: suggestion });
+          }
+        }
+        return next;
+      });
+      setStep(0);
+      setImageAnalysisMessage("AI filled the blank fields it could read. Review and edit them before publishing.");
+    } catch (reason) {
+      setImageAnalysisMessage(reason instanceof Error ? reason.message : "Could not analyze this image. You can fill in the form manually.");
+    } finally {
+      setIsAnalyzingImage(false);
+    }
+  }
+
   const canProceedStep0 = form.title.trim() && form.category && form.location.trim();
   const canProceedStep1 = form.description.trim();
 
@@ -199,6 +227,26 @@ export default function PostJobPage() {
       <p className="mt-1 text-sm text-slate-500">Fill in the details to attract the right candidates</p>
       {!editingJobId && draftLoaded && <p aria-live="polite" className="mt-2 text-xs text-slate-500">{draftSaved ? "Draft saved" : "Saving your draft…"}</p>}
 
+      <section className="mt-6 rounded-xl border border-violet-100 bg-violet-50/70 p-5" aria-label="AI job post image autofill">
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-violet-600 shadow-sm"><Sparkles className="h-5 w-5" /></span>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-semibold text-wazifny-navy">Fill from a job post image</h2>
+            <p className="mt-1 text-sm text-slate-600">Upload a clear JPEG, PNG, or WebP image (up to 3 MB). AI will suggest details for blank fields; you can review and edit everything.</p>
+            <p className="mt-1 text-xs text-slate-500">The image is sent to Google Gemini for analysis and is not stored by Wazifny. You can also skip this and fill out the form as usual.</p>
+            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const selected = event.target.files?.[0] ?? null; setImageFile(selected); setImageAnalysisMessage(selected && selected.size > 3 * 1024 * 1024 ? "Please choose an image no larger than 3 MB." : null); }} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:font-medium file:text-wazifny-navy" aria-label="Choose job post image" />
+              <button type="button" onClick={analyzeSelectedImage} disabled={!imageFile || imageFile.size > 3 * 1024 * 1024 || isAnalyzingImage} className="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">
+                {isAnalyzingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {isAnalyzingImage ? "Analyzing…" : "Analyze image"}
+              </button>
+            </div>
+            {imageFile && imageFile.size <= 3 * 1024 * 1024 && <p className="mt-2 text-xs text-slate-500">Selected: {imageFile.name}</p>}
+            {imageAnalysisMessage && <p aria-live="polite" className="mt-2 text-sm text-slate-700">{imageAnalysisMessage}</p>}
+          </div>
+        </div>
+      </section>
+
       {isLoadingJob && <div className="mt-6 flex justify-center"><Loader2 className="h-6 w-6 animate-spin text-wazifny-green" /></div>}
 
       {!isLoadingJob && <div className="mt-6 flex items-center gap-3">
@@ -236,6 +284,7 @@ export default function PostJobPage() {
                 <select value={form.category} onChange={(e) => update("category", e.target.value)} className={inputClass}>
                   <option value="">Select...</option>
                   {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {form.category && !CATEGORY_OPTIONS.includes(form.category) && <option value={form.category}>{form.category}</option>}
                 </select>
               </Field>
               <Field label="Job Type *">
@@ -253,8 +302,8 @@ export default function PostJobPage() {
               />
             </Field>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Experience level"><select value={form.employment_level} onChange={(e) => update("employment_level", e.target.value)} className={inputClass}><option value="">Select level</option>{["Entry level", "Junior", "Mid-level", "Senior", "Lead", "Director", "Executive"].map((value) => <option key={value}>{value}</option>)}</select></Field>
-              <Field label="Work arrangement"><select value={form.work_arrangement} onChange={(e) => update("work_arrangement", e.target.value)} className={inputClass}><option value="">Select arrangement</option>{["On-site", "Hybrid", "Remote", "Worldwide / Remote"].map((value) => <option key={value}>{value}</option>)}</select></Field>
+              <Field label="Experience level"><select value={form.employment_level} onChange={(e) => update("employment_level", e.target.value)} className={inputClass}><option value="">Select level</option>{["Entry level", "Junior", "Mid-level", "Senior", "Lead", "Director", "Executive"].map((value) => <option key={value}>{value}</option>)}{form.employment_level && !["Entry level", "Junior", "Mid-level", "Senior", "Lead", "Director", "Executive"].includes(form.employment_level) && <option value={form.employment_level}>{form.employment_level}</option>}</select></Field>
+              <Field label="Work arrangement"><select value={form.work_arrangement} onChange={(e) => update("work_arrangement", e.target.value)} className={inputClass}><option value="">Select arrangement</option>{["On-site", "Hybrid", "Remote", "Worldwide / Remote"].map((value) => <option key={value}>{value}</option>)}{form.work_arrangement && !["On-site", "Hybrid", "Remote", "Worldwide / Remote"].includes(form.work_arrangement) && <option value={form.work_arrangement}>{form.work_arrangement}</option>}</select></Field>
             </div>
             <Field label="Working hours"><input value={form.working_hours} onChange={(e) => update("working_hours", e.target.value)} placeholder="e.g. Flexible hours, 9 AM–5 PM" className={inputClass} /></Field>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
