@@ -233,7 +233,7 @@ export default function PostJobPage() {
           <div className="min-w-0 flex-1">
             <h2 className="font-semibold text-wazifny-navy">Fill from a job post image</h2>
             <p className="mt-1 text-sm text-slate-600">Upload a clear JPEG, PNG, or WebP image (up to 3 MB). AI will suggest details for blank fields; you can review and edit everything.</p>
-            <p className="mt-1 text-xs text-slate-500">The image is sent to Google Gemini for analysis and is not stored by Wazifny. You can also skip this and fill out the form as usual.</p>
+            <p className="mt-1 text-xs text-slate-500">The image is sent to Google Gemini, or Groq if Gemini is unavailable, for analysis and is not stored by Wazifny. You can also skip this and fill out the form as usual.</p>
             <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
               <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const selected = event.target.files?.[0] ?? null; setImageFile(selected); setImageAnalysisMessage(selected && selected.size > 3 * 1024 * 1024 ? "Please choose an image no larger than 3 MB." : null); }} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:font-medium file:text-wazifny-navy" aria-label="Choose job post image" />
               <button type="button" onClick={analyzeSelectedImage} disabled={!imageFile || imageFile.size > 3 * 1024 * 1024 || isAnalyzingImage} className="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">

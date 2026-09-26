@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.6-flash"
     gemini_image_fallback_model: str | None = "gemini-3.8-flash"
     groq_api_key: str | None = None
+    groq_image_model: str = "qwen/qwen3.8-27b"
     # Kept aligned with models currently available on the project's Groq key.
     # The previous llama-3.1-8b-instant model was retired and returns 404.
     groq_model: str = "openai/gpt-oss-20b"
